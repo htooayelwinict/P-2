@@ -1,0 +1,74 @@
+# =========================
+# Secrets / Credentials
+# =========================
+.env
+.env.*
+!.env.example
+.envrc
+
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+*.jks
+
+*id_rsa*
+*id_ed25519*
+
+secrets/
+secret/
+credentials/
+credential/
+tokens/
+
+*.secret
+*.secrets
+*.token
+
+# Admin area may contain secret material
+admin/*
+!admin/README.md
+
+# Local Codex/Claude client state
+.claude/
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+.coverage
+.coverage.*
+htmlcov/
+
+.venv/
+venv/
+env/
+
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =========================
+# Editor / OS noise
+# =========================
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*.log
+
+
+CLAUDE.md 

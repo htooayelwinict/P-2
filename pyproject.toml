@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multi-agent-bridge-system"
+version = "0.1.0"
+description = "Supervisor-Bridge-Customer multi-agent architecture with strict state boundaries."
+readme = "docs/PRD.md"
+requires-python = ">=3.10"
+dependencies = [
+  "langchain>=1.2.10",
+  "langchain-openai>=1.1.9",
+  "langgraph>=1.0.8",
+  "deepagents>=0.4.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+
+[project.scripts]
+multi-agent-cli = "multi_agent_app.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
