@@ -14,22 +14,18 @@ class TaskClassifier(Protocol):
 
 @dataclass
 class LLMTaskClassifier:
-    """Classifier that routes by LLM output label."""
+    """Classifier that routes solely by LLM output label.
+
+    The LLM is prompted with detailed criteria and examples to classify
+    requests as either 'respond_admin' or 'route_bridge'.
+
+    Args:
+        model: Chat model used for classification.
+    """
 
     model: BaseChatModel
 
-    bridge_keywords: tuple[str, ...] = (
-        "docs",
-        "documentation",
-        "customer",
-        "user document",
-        "knowledge base",
-    )
-
     def classify(self, admin_input: str) -> RouteDecision:
-        lowered_input = admin_input.lower()
-        has_bridge_intent = any(keyword in lowered_input for keyword in self.bridge_keywords)
-
         prompt = f"""You are a task router for an admin assistant system. Analyze the user's request and classify it into one of two routes.
 
 ROUTES:
@@ -67,11 +63,5 @@ OUTPUT FORMAT: Return exactly one word - either 'route_bridge' or 'respond_admin
         lowered = text.lower()
 
         if "route_bridge" in lowered:
-            return "route_bridge" if has_bridge_intent else "respond_admin"
-        if "respond_admin" in lowered:
-            return "respond_admin"
-
-        # Fallback deterministic rule if model output is unexpected.
-        if has_bridge_intent:
             return "route_bridge"
         return "respond_admin"

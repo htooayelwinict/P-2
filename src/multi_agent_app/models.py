@@ -50,18 +50,27 @@ class DeterministicToolChatModel(BaseChatModel):
         last_text = _message_text(messages[-1].content if messages else "")
         lowered = last_text.lower()
 
-        if "return exactly one label" in lowered and "task:" in lowered:
-            task_text = lowered.split("task:", 1)[1]
-            bridge_keywords = (
+        if "return exactly one word" in lowered and "route_bridge" in lowered:
+            # Classification prompt - check for doc-related patterns in the user request
+            user_request = ""
+            if "user request:" in lowered:
+                user_request = lowered.split("user request:", 1)[1]
+            elif "task:" in lowered:
+                user_request = lowered.split("task:", 1)[1]
+
+            # Patterns indicating docs/knowledge base routing
+            doc_patterns = (
                 "docs",
                 "documentation",
-                "customer",
-                "user document",
                 "knowledge base",
+                "help article",
+                "user manual",
+                "customer-facing",
+                "support content",
             )
             label = (
                 "route_bridge"
-                if any(keyword in task_text for keyword in bridge_keywords)
+                if any(p in user_request for p in doc_patterns)
                 else "respond_admin"
             )
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content=label))])

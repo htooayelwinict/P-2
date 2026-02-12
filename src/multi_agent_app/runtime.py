@@ -54,13 +54,27 @@ class MultiAgentRuntime:
         return state.get("route", "respond_admin")
 
     def _bridge_node(self, state: GlobalState) -> GlobalState:
-        payload = self.bridge.invoke(state)
+        """Project GlobalState to UnsafeState boundary.
+
+        This is the security checkpoint where:
+        1. BridgeNode.invoke() validates origin == "supervisor"
+        2. Only admin_input is forwarded (secrets dropped)
+        3. Returns GlobalState with bridge_admin_input for next node
+
+        The returned dict is merged into admin graph's GlobalState.
+        """
+        payload: UnsafeState = self.bridge.invoke(state)
         return {
             "origin": "bridge",
             "bridge_admin_input": payload.get("bridge_input", ""),
         }
 
     def _customer_from_bridge_node(self, state: GlobalState) -> GlobalState:
+        """Invoke customer service with sanitized state.
+
+        Extracts bridge_admin_input from GlobalState and constructs a fresh
+        UnsafeState for the customer node. The customer never sees secrets.
+        """
         unsafe_state: UnsafeState = {
             "origin": "bridge",
             "bridge_input": state.get("bridge_admin_input", ""),

@@ -113,6 +113,15 @@ class SupervisorAgentNode:
 
 @dataclass
 class BridgeNode:
+    """Security gate that projects GlobalState to UnsafeState.
+
+    Enforces two critical security properties:
+    1. Access Control: Only accepts state with origin="supervisor"
+    2. Secret Stripping: Forwards ONLY admin_input as bridge_input
+
+    Returns UnsafeState which cannot hold secret_context or secret_key_ref.
+    """
+
     def invoke(self, state: GlobalState) -> UnsafeState:
         if state.get("origin") != "supervisor":
             raise BridgeAccessError("Bridge accepts input only from supervisor.")
