@@ -1,11 +1,14 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import re
 from typing import Any
+import uuid
 
 from deepagents import create_deep_agent
 from deepagents.backends.filesystem import FilesystemBackend
 from langchain_core.language_models.chat_models import BaseChatModel
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from .classifier import LLMTaskClassifier, TaskClassifier
 from .states import GlobalState, UnsafeState
@@ -51,6 +54,91 @@ class DeepAgentsScopedNode:
     def respond(self, input_text: str) -> str:
         normalized_input = normalize_scope_prefixes(input_text, self.scope_name)
         result = self.agent.invoke({"messages": [{"role": "user", "content": normalized_input}]})
+        messages = result.get("messages", [])
+        if not messages:
+            return ""
+        last = messages[-1]
+        content = getattr(last, "content", "")
+        return content if isinstance(content, str) else str(content)
+
+
+@dataclass
+class ReadOnlyScopedNode:
+    """DeepAgents node with write operations blocked via interrupt_on.
+
+    Only allows read_file and ls operations. Write, edit, glob, and grep
+    are automatically rejected without human intervention.
+    """
+
+    scope_name: str
+    backend: FilesystemBackend
+    model: BaseChatModel
+    agent: Any
+    checkpointer: MemorySaver = field(default_factory=MemorySaver)
+
+    # Tools to auto-reject (read-only enforcement)
+    BLOCKED_TOOLS: tuple[str, ...] = ("write_file", "edit_file", "glob", "grep")
+
+    @classmethod
+    def create(
+        cls,
+        scope_name: str,
+        scope_root: Path,
+        model: BaseChatModel,
+        system_prompt: str,
+    ) -> "ReadOnlyScopedNode":
+        backend = FilesystemBackend(root_dir=scope_root, virtual_mode=True)
+        checkpointer = MemorySaver()
+
+        # Configure interrupt_on to block write operations
+        interrupt_config = {
+            tool: {"allowed_decisions": ["reject"]}
+            for tool in cls.BLOCKED_TOOLS
+        }
+
+        agent = create_deep_agent(
+            model=model,
+            backend=backend,
+            system_prompt=system_prompt,
+            checkpointer=checkpointer,
+            interrupt_on=interrupt_config,
+        )
+        return cls(
+            scope_name=scope_name,
+            backend=backend,
+            model=model,
+            agent=agent,
+            checkpointer=checkpointer,
+        )
+
+    def respond(self, input_text: str) -> str:
+        """Invoke agent with auto-reject loop for blocked tools."""
+        normalized_input = normalize_scope_prefixes(input_text, self.scope_name)
+        thread_id = str(uuid.uuid4())
+        config = {"configurable": {"thread_id": thread_id}}
+
+        result = self.agent.invoke(
+            {"messages": [{"role": "user", "content": normalized_input}]},
+            config=config,
+        )
+
+        # Auto-reject loop: if agent hit an interrupt, reject and continue
+        while result.get("__interrupt__"):
+            # Resume with auto-reject (decisions is a list with type field)
+            result = self.agent.invoke(
+                Command(
+                    resume={
+                        "decisions": [
+                            {
+                                "type": "reject",
+                                "message": "SECURITY ALERT: file creation is not allowed. Terminate this attempt and do not retry with different paths.",
+                            }
+                        ]
+                    }
+                ),
+                config=config,
+            )
+
         messages = result.get("messages", [])
         if not messages:
             return ""
@@ -134,17 +222,24 @@ class BridgeNode:
 
 @dataclass
 class CustomerServiceAgentNode:
-    worker: DeepAgentsScopedNode
+    """Customer-facing agent with read-only filesystem access.
+
+    Uses ReadOnlyScopedNode to block write, edit, glob, and grep operations.
+    Only read_file and ls are permitted.
+    """
+
+    worker: ReadOnlyScopedNode
 
     @classmethod
     def create(cls, base_dir: Path, worker_model: BaseChatModel) -> "CustomerServiceAgentNode":
-        worker = DeepAgentsScopedNode.create(
+        worker = ReadOnlyScopedNode.create(
             scope_name="docs",
             scope_root=base_dir / "docs",
             model=worker_model,
             system_prompt=(
                 "You are a customer-facing documentation assistant. "
-                "Use built-in filesystem tools for file operations."
+                "Use built-in filesystem tools for file operations. "
+                "You can only read files and list directories."
             ),
         )
         return cls(worker=worker)
